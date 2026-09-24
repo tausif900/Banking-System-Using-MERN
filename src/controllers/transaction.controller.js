@@ -76,4 +76,12 @@ const createTransaction = async (req, res) => {
    */
 
   const balance = await fromAcc.getBalance();
+
+  if (balance < amount) {
+    return res
+      .status(400)
+      .json({
+        message: `You have ${balance} left, which is not sufficinet to make transaction`,
+      });
+  }
 };
