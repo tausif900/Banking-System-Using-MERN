@@ -46,4 +46,11 @@ const sendRegistrationEmail = async (userEmail, name) => {
   await sendEmail(userEmail, subject, text, html);
 };
 
-module.exports = { sendRegistrationEmail };
+const sendTransactionEmail = async (userEmail, name, amount, toAccount) => {
+  const subject = "Transaction Successful";
+  const text = `Hello ${name},\n\n Your transaction of amount ${amount} to account ${toAccount} was successful.`;
+  const html = `<p>Hello ${name},\n\n Your transaction of amount ${amount} to account ${toAccount} was successful.</p>`;
+  await sendEmail(userEmail, subject, text, html);
+};
+
+module.exports = { sendRegistrationEmail, sendTransactionEmail };

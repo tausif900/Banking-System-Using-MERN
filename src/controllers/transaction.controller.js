@@ -1,7 +1,8 @@
 const accountModel = require("../models/account.model");
 const ledgerModel = require("../models/ledger.model");
 const transactionModel = require("../models/transaction.model");
-const {} = require("../services/email.service");
+const { sendTransactionEmail } = require("../services/email.service");
+const mongoose = require("mongoose");
 
 const createTransaction = async (req, res) => {
   /**
@@ -47,7 +48,7 @@ const createTransaction = async (req, res) => {
         .json({ message: "Transaction is still in a pending state" });
     }
 
-    if (isTransactionAlreadyExists.status === "PENDING") {
+    if (isTransactionAlreadyExists.status === "FAILED") {
       return res.status(500).json({
         message: "Transaction process Failed, Please try again later",
       });
@@ -78,10 +79,62 @@ const createTransaction = async (req, res) => {
   const balance = await fromAcc.getBalance();
 
   if (balance < amount) {
-    return res
-      .status(400)
-      .json({
-        message: `You have ${balance} left, which is not sufficinet to make transaction`,
-      });
+    return res.status(400).json({
+      message: `You have ${balance} left, which is not sufficinet to make transaction`,
+    });
   }
+
+  /**
+   * -  Create transaction
+   */
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  const transaction = await transactionModel.create(
+    {
+      fromAccount,
+      toAccount,
+      amount,
+      idempotencyKey,
+      status: "PENDING",
+    },
+    { session },
+  );
+
+  const debitLedgerEntry = await ledgerModel.create(
+    {
+      account: fromAccount,
+      amount: amount,
+      transaction: transaction._id,
+      type: "DEBIT",
+    },
+    { session },
+  );
+
+  const creditLedgerEntry = await ledgerModel.create(
+    {
+      account: toAccount,
+      amount: amount,
+      transaction: transaction._id,
+      type: "CREDIT",
+    },
+    { session },
+  );
+
+  transaction.status = "COMPLETED";
+  await transaction.save({ session });
+
+  await session.commitTransaction();
+  session.endSession();
+
+  /**
+   *  - Email
+   */
+
+  await sendTransactionEmail(req.user.email, req.user.name, amount, toAccount);
+  return res.status(201).json({
+    message: "Transaction completed successfully",
+    transaction,
+  });
 };
