@@ -138,3 +138,5 @@ const createTransaction = async (req, res) => {
     transaction,
   });
 };
+
+module.exports = { createTransaction };
