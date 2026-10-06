@@ -32,6 +32,12 @@ const userSchema = new mongoose.Schema(
         "password should contains atleast one UpperCase Letter, one LowerCase Letter,one Number and one special Character",
       ],
     },
+    systemUser: {
+      type: Boolean,
+      default: false,
+      immutable: true,
+      select: false,
+    },
   },
   { timestamps: true },
 );

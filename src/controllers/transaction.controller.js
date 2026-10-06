@@ -1,6 +1,7 @@
 const accountModel = require("../models/account.model");
 const ledgerModel = require("../models/ledger.model");
 const transactionModel = require("../models/transaction.model");
+const userModel = require("../models/user.model");
 const { sendTransactionEmail } = require("../services/email.service");
 const mongoose = require("mongoose");
 
@@ -103,22 +104,26 @@ const createTransaction = async (req, res) => {
   );
 
   const debitLedgerEntry = await ledgerModel.create(
-    {
-      account: fromAccount,
-      amount: amount,
-      transaction: transaction._id,
-      type: "DEBIT",
-    },
+    [
+      {
+        account: fromAccount,
+        amount: amount,
+        transaction: transaction._id,
+        type: "DEBIT",
+      },
+    ],
     { session },
   );
 
   const creditLedgerEntry = await ledgerModel.create(
-    {
-      account: toAccount,
-      amount: amount,
-      transaction: transaction._id,
-      type: "CREDIT",
-    },
+    [
+      {
+        account: toAccount,
+        amount: amount,
+        transaction: transaction._id,
+        type: "CREDIT",
+      },
+    ],
     { session },
   );
 
@@ -139,4 +144,95 @@ const createTransaction = async (req, res) => {
   });
 };
 
-module.exports = { createTransaction };
+const createInitialFundsTransaction = async (req, res) => {
+  const { toAccount, amount, idempotencyKey } = req.body;
+
+  console.log(toAccount);
+
+  if (!toAccount || !amount || !idempotencyKey) {
+    return res
+      .status(400)
+      .json({ message: "toAccount,amount and idempotency Key are required" });
+  }
+
+  const toUserAccount = await accountModel.findOne({ _id: toAccount });
+
+  console.log(toUserAccount);
+
+  if (!toUserAccount) {
+    return res.status(400).json({ message: "Invalid Account" });
+  }
+
+  const systemUser = await userModel.findOne({
+    systemUser: true,
+  });
+
+  console.log(systemUser);
+
+  if (!systemUser) {
+    return res.status(400).json({
+      message: "System user not found",
+    });
+  }
+
+  const fromUserAccount = await accountModel.findOne({
+    user: systemUser._id,
+  });
+
+  console.log(fromUserAccount);
+
+  if (!fromUserAccount) {
+    return res.status(400).json({
+      message: "System user account not found",
+    });
+  }
+
+  const session = await mongoose.startSession();
+
+  session.startTransaction();
+
+  const transaction = new transactionModel({
+    fromAccount: fromUserAccount._id,
+    toAccount,
+    amount,
+    idempotencyKey,
+    status: "Pending",
+  });
+
+  const debitLedgerEntry = await ledgerModel.create(
+    [
+      {
+        account: fromUserAccount._id,
+        amount: amount,
+        transaction: transaction._id,
+        type: "DEBIT",
+      },
+    ],
+    { session },
+  );
+
+  const creditLedgerEntry = await ledgerModel.create(
+    [
+      {
+        account: toAccount,
+        amount: amount,
+        transaction: transaction._id,
+        type: "CREDIT",
+      },
+    ],
+    { session },
+  );
+
+  transaction.status = "COMPLETED";
+  await transaction.save({ session });
+
+  await session.commitTransaction();
+  session.endSession();
+
+  return res.status(200).json({
+    message: "Initial funds transaction completed successfully",
+    transaction,
+  });
+};
+
+module.exports = { createTransaction, createInitialFundsTransaction };
