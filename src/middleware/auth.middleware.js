@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const userModel = require("../models/user.model");
+const tokenBlacklistModel = require("../models/blacklist.model");
 
 const authMiddleware = async (req, res, next) => {
   const token = req.cookies.token || req.headers.authorization?.split[1];
@@ -8,6 +9,14 @@ const authMiddleware = async (req, res, next) => {
     return res.status(401).json({
       message: "Unauthorized access, token is missing",
     });
+  }
+
+  const isBlacklisted = await tokenBlacklistModel.findOne({ token });
+
+  if (isBlacklisted) {
+    return res
+      .status(401)
+      .json({ message: "unauthorized access, token is invalid" });
   }
 
   try {
@@ -31,6 +40,14 @@ const authSystemUserMiddleware = async (req, res, next) => {
     });
   }
 
+  const isBlacklisted = await tokenBlacklistModel.findOne({ token });
+
+  if (isBlacklisted) {
+    return res
+      .status(401)
+      .json({ message: "unauthorized access, token is invalid" });
+  }
+
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await userModel.findById(decoded.userId).select("+systemUser");
@@ -48,4 +65,4 @@ const authSystemUserMiddleware = async (req, res, next) => {
   }
 };
 
-module.exports = { authMiddleware ,authSystemUserMiddleware};
+module.exports = { authMiddleware, authSystemUserMiddleware };
